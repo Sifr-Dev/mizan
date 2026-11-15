@@ -31,11 +31,12 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-// AuthResponse is returned after successful authentication. The cookie
-// transport is introduced in the following HTTP-boundary commit.
+// AuthResponse is returned after successful authentication. The refresh token is
+// deliberately not serialized into the JSON response; the HTTP layer places it
+// in an HttpOnly cookie instead.
 type AuthResponse struct {
 	AccessToken      string    `json:"access_token"`
-	RefreshToken     string    `json:"refresh_token"`
+	RefreshToken     string    `json:"-"`
 	RefreshExpiresAt time.Time `json:"-"`
 	User             User      `json:"user"`
 }

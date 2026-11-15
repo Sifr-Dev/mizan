@@ -75,13 +75,41 @@ func main() {
 		frontendDir = ""
 	}
 
+	allowedOrigins, err := cfg.CORSOrigins()
+	if err != nil {
+		panic(fmt.Sprintf("invalid CORS configuration: %v", err))
+	}
+	trustedProxies, err := cfg.TrustedProxyCIDRs()
+	if err != nil {
+		panic(fmt.Sprintf("invalid trusted proxy configuration: %v", err))
+	}
+	sameSite, err := cfg.SameSiteMode()
+	if err != nil {
+		panic(fmt.Sprintf("invalid cookie configuration: %v", err))
+	}
+
 	router := handler.NewRouter(&handler.Dependencies{
-		UserService:  userService,
-		TaskService:  taskService,
-		AdminService: adminService,
-		TokenMgr:     tokenMgr,
-		RedisClient:  rdb,
-		FrontendDir:  frontendDir,
+		UserService:       userService,
+		TaskService:       taskService,
+		AdminService:      adminService,
+		TokenMgr:          tokenMgr,
+		RedisClient:       rdb,
+		FrontendDir:       frontendDir,
+		AllowedOrigins:    allowedOrigins,
+		TrustedProxyCIDRs: trustedProxies,
+		RateLimitMax:      cfg.RateLimit.MaxRequests,
+		RateLimitWindow:   cfg.RateLimit.Window,
+		RateLimitFailOpen: cfg.RateLimit.FailOpen,
+		RateLimitScope:    cfg.RateLimit.Scope,
+		MaxBodyBytes:      cfg.Request.MaxBodyBytes,
+		RefreshCookie: handler.CookieConfig{
+			Name:           cfg.Auth.CookieName,
+			Path:           cfg.Auth.CookiePath,
+			Secure:         cfg.Auth.CookieSecure,
+			SameSite:       sameSite,
+			MaxAge:         int(cfg.JWT.RefreshExpiration.Seconds()),
+			AllowedOrigins: allowedOrigins,
+		},
 	})
 
 	srv := &http.Server{

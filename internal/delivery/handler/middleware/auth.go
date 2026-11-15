@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
 	"github.com/mohamedsalahi/GO_DB/internal/infra/auth"
 )
 
 type contextKey string
 
 const UserIDKey contextKey = "user_id"
-const UserRoleKey contextKey = "user_role"
 
 func AuthMiddleware(tokenManager *auth.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -41,7 +41,6 @@ func AuthMiddleware(tokenManager *auth.TokenManager) func(http.Handler) http.Han
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -54,24 +53,44 @@ func GetUserID(ctx context.Context) uuid.UUID {
 	return uuid.Nil
 }
 
-func GetUserRole(ctx context.Context) string {
-	if role, ok := ctx.Value(UserRoleKey).(string); ok {
-		return role
-	}
-	return ""
-}
+// AdminMiddleware checks the current database role instead of trusting a role
+// copied into a bearer token. The resolver is required: production
+// authorization must always resolve the account's current role from the
+// database.
+func AdminMiddleware(resolver domain.UserService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := GetUserID(r.Context())
+			if userID == uuid.Nil {
+				writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			if resolver == nil {
+				writeMiddlewareError(w, http.StatusServiceUnavailable, "authorization service unavailable")
+				return
+			}
 
-// AdminMiddleware retains the legacy route signature during the token
-// lifecycle migration. The authorization-boundary commit replaces it with a
-// required current-role database resolver.
-func AdminMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if GetUserRole(r.Context()) != "admin" {
-			writeMiddlewareError(w, http.StatusForbidden, "forbidden: admin access required")
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(r.Context()))
-	})
+			user, err := resolver.GetProfile(r.Context(), userID)
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+					return
+				}
+				writeMiddlewareError(w, http.StatusServiceUnavailable, "authorization service unavailable")
+				return
+			}
+			if user == nil {
+				writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if user.Role != domain.RoleAdmin {
+				writeMiddlewareError(w, http.StatusForbidden, "forbidden: admin access required")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(r.Context()))
+		})
+	}
 }
 
 func writeMiddlewareError(w http.ResponseWriter, status int, message string) {
