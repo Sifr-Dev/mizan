@@ -60,7 +60,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, name, email, password_hash, role, created_at, updated_at
 FROM users
-WHERE email = $1 LIMIT 1
+WHERE LOWER(BTRIM(email)) = LOWER(BTRIM($1)) LIMIT 1
 `
 
 type GetUserByEmailRow struct {
