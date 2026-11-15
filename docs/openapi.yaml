@@ -2,14 +2,29 @@ openapi: "3.0.3"
 info:
   title: Go Clean Architecture API
   description: |
-    Production-grade REST API built with Go using Clean Architecture principles.
-    Features JWT authentication, PostgreSQL with sqlc, Redis rate limiting, and more.
+    Layered Go REST API for user registration, task ownership, and explicit
+    administrator management.
+
+    Authentication issues a short-lived access token and a rotating refresh
+    family. The access token is returned as JSON and sent as a Bearer token.
+    The refresh token is never returned in JSON; it is sent as a host-only,
+    HttpOnly, SameSite cookie and can only be used by the auth endpoints.
+    Redis-backed sessions bind the current access/refresh JTIs to one family.
+    Rotation preserves the absolute family expiry, and reuse of a consumed
+    refresh token revokes the successor credentials.
   version: "1.0.0"
   contact:
-    name: Developer
+    name: Go Clean Architecture contributors
 servers:
   - url: http://localhost:8080
     description: Local development
+
+tags:
+  - name: System
+  - name: Auth
+  - name: Users
+  - name: Tasks
+  - name: Admin
 
 components:
   securitySchemes:
@@ -17,13 +32,21 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: Access token only. Refresh tokens are rejected by protected routes.
+    RefreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: HttpOnly refresh-session cookie. The configured cookie name may differ.
   schemas:
     User:
       type: object
+      required: [id, name, email, role, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         email: { type: string, format: email }
+        role: { type: string, enum: [user, admin] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     RegisterRequest:
@@ -32,7 +55,11 @@ components:
       properties:
         name: { type: string, minLength: 2, maxLength: 100 }
         email: { type: string, format: email }
-        password: { type: string, minLength: 8, maxLength: 72 }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: Character validation allows at most 72 characters; the service separately enforces bcrypt's 72 UTF-8 byte limit.
     LoginRequest:
       type: object
       required: [email, password]
@@ -41,12 +68,19 @@ components:
         password: { type: string }
     AuthResponse:
       type: object
+      required: [access_token, user]
       properties:
         access_token: { type: string }
-        refresh_token: { type: string }
         user: { $ref: "#/components/schemas/User" }
+    AuthEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/APIResponse"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/AuthResponse" }
     Task:
       type: object
+      required: [id, user_id, title, status, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
@@ -70,12 +104,89 @@ components:
         description: { type: string, maxLength: 1000 }
         status: { type: string, enum: [pending, in_progress, completed] }
         due_date: { type: string, format: date-time }
+    ListUserTasksResponse:
+      type: object
+      required: [user_id, tasks]
+      properties:
+        user_id: { type: string, format: uuid }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
     APIResponse:
       type: object
+      required: [success]
       properties:
         success: { type: boolean }
         data: {}
         error: { type: string }
+    ErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/APIResponse"
+        - type: object
+          properties:
+            success: { type: boolean, example: false }
+            error: { type: string }
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, example: ok }
+
+  responses:
+    BadRequest:
+      description: Malformed or invalid request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Missing or invalid access token/session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: The request origin is not allowed or the current database role does not permit the operation.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: Email is already registered.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    PayloadTooLarge:
+      description: JSON body exceeds the configured limit.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    UnsupportedMediaType:
+      description: Request body must use application/json.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: The per-IP API rate limit was exceeded.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+        X-RateLimit-Limit:
+          schema: { type: integer }
+        X-RateLimit-Remaining:
+          schema: { type: integer }
+        X-RateLimit-Reset:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ServiceUnavailable:
+      description: A required backing service or the rate limiter is unavailable.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 paths:
   /health:
@@ -84,13 +195,10 @@ paths:
       tags: [System]
       responses:
         "200":
-          description: Service is healthy
+          description: Service is healthy.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  status: { type: string, example: "ok" }
+              schema: { $ref: "#/components/schemas/HealthResponse" }
 
   /api/v1/auth/register:
     post:
@@ -100,37 +208,91 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterRequest"
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
       responses:
         "201":
-          description: User registered successfully
+          description: User registered; a refresh cookie is set.
+          headers:
+            Set-Cookie:
+              description: Host-only HttpOnly refresh-session cookie with the configured Secure and SameSite attributes.
+              schema: { type: string }
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "409":
-          description: Email already in use
+              schema: { $ref: "#/components/schemas/AuthEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /api/v1/auth/login:
     post:
-      summary: Login with email and password
+      summary: Log in with email and password
       tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
+            schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200":
-          description: Login successful
+          description: Login successful; a refresh cookie is set.
+          headers:
+            Set-Cookie:
+              description: Host-only HttpOnly refresh-session cookie with the configured Secure and SameSite attributes.
+              schema: { type: string }
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "401":
-          description: Invalid credentials
+              schema: { $ref: "#/components/schemas/AuthEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate the current refresh session
+      tags: [Auth]
+      description: |
+        Reads the HttpOnly refresh cookie and rotates the current refresh JTI
+        once. The server-side family has an absolute expiry that rotation does
+        not extend. Presenting a consumed refresh token revokes the successor
+        session family. Browser Origin is checked against the exact CORS
+        allowlist or the request Host; SameSite=None also requires Origin.
+      security:
+        - RefreshCookie: []
+      responses:
+        "200":
+          description: Session rotated; a new refresh cookie is set.
+          headers:
+            Set-Cookie:
+              description: Rotated HttpOnly refresh session cookie.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke the current refresh session
+      tags: [Auth]
+      description: Revokes the session family and clears the refresh cookie. Browser Origin follows the same allowlist policy as refresh.
+      security:
+        - {}
+        - RefreshCookie: []
+      responses:
+        "204":
+          description: Session revoked and the refresh cookie cleared.
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /api/v1/users/me:
     get:
@@ -140,27 +302,30 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: User profile
+          description: User profile.
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: "#/components/schemas/APIResponse"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/User"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /api/v1/tasks:
     get:
-      summary: List all tasks for current user
+      summary: List tasks owned by the current user
       tags: [Tasks]
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: List of tasks
+          description: Task list.
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
-      summary: Create a new task
+      summary: Create a task for the current user
       tags: [Tasks]
       security:
         - BearerAuth: []
@@ -168,55 +333,129 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/CreateTaskRequest"
+            schema: { $ref: "#/components/schemas/CreateTaskRequest" }
       responses:
         "201":
-          description: Task created
+          description: Task created.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /api/v1/tasks/{taskID}:
+    parameters:
+      - name: taskID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
     get:
-      summary: Get task by ID
+      summary: Get an owned task
       tags: [Tasks]
       security:
         - BearerAuth: []
-      parameters:
-        - name: taskID
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
       responses:
         "200":
-          description: Task details
+          description: Task details.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     put:
-      summary: Update a task
+      summary: Update an owned task
       tags: [Tasks]
       security:
         - BearerAuth: []
-      parameters:
-        - name: taskID
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateTaskRequest"
+            schema: { $ref: "#/components/schemas/UpdateTaskRequest" }
       responses:
         "200":
-          description: Task updated
+          description: Task updated.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
     delete:
-      summary: Delete a task
+      summary: Delete an owned task
       tags: [Tasks]
       security:
         - BearerAuth: []
-      parameters:
-        - name: taskID
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
       responses:
         "204":
-          description: Task deleted
+          description: Task deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/admin/users:
+    get:
+      summary: List users
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User list.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/admin/tasks:
+    get:
+      summary: List all tasks
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Task list.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/admin/users/{userID}/tasks:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: List tasks for one user
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User task list.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/APIResponse"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ListUserTasksResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/admin/users/{userID}/promote:
+    parameters:
+      - name: userID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      summary: Promote a user to administrator
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Updated administrator user.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
