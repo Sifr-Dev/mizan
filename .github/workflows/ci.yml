@@ -78,7 +78,7 @@ jobs:
 
       - name: Install pinned migration tool
         run: |
-          go install github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
+          go install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Apply PostgreSQL migrations
