@@ -7,6 +7,7 @@ import type {
   CreateTaskRequest,
   UpdateTaskRequest,
 } from '../types';
+import { createBrowserSessionCoordinator, type SessionState } from './session.ts';
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -23,15 +24,15 @@ export const authClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+export const sessionCoordinator = createBrowserSessionCoordinator();
+
 type RetriableRequest = InternalAxiosRequestConfig & {
   _retried?: boolean;
   _refreshTransientFailure?: boolean;
 };
 
-let refreshPromise: Promise<string> | null = null;
-
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = sessionCoordinator.getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -69,19 +70,47 @@ api.interceptors.response.use(
 );
 
 function refreshAccessToken(): Promise<string> {
-  if (!refreshPromise) {
-    refreshPromise = authClient
-      .post<APIResponse<AuthResponse>>('/auth/refresh', {})
-      .then(extractData)
-      .then((response) => {
-        localStorage.setItem('access_token', response.access_token);
-        return response.access_token;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+  return sessionCoordinator
+    .refresh(async () => {
+      const response = await authClient
+        .post<APIResponse<AuthResponse>>('/auth/refresh', {})
+        .then(extractData);
+      return toSessionState(response);
+    })
+    .then((session) => session.accessToken);
+}
+
+/** Restore an in-memory session after a reload using the HttpOnly cookie. */
+export function restoreSession(): Promise<SessionState | null> {
+  return sessionCoordinator
+    .restore(async () => {
+      const response = await authClient
+        .post<APIResponse<AuthResponse>>('/auth/refresh', {})
+        .then(extractData);
+      return toSessionState(response);
+    })
+    .catch((error: unknown) => {
+      if (isAuthenticationFailure(error)) {
+        clearAccessSession(false);
+        return null;
+      }
+      throw error;
+    });
+}
+
+export function setAccessSession(response: AuthResponse): void {
+  sessionCoordinator.setSession(toSessionState(response));
+}
+
+export function clearAccessSession(redirect = true): void {
+  sessionCoordinator.clearSession();
+  if (
+    redirect &&
+    typeof window !== 'undefined' &&
+    window.location.pathname !== '/login'
+  ) {
+    window.location.href = '/login';
   }
-  return refreshPromise;
 }
 
 export function isAuthenticationFailure(error: unknown): boolean {
@@ -92,13 +121,6 @@ export function isAuthenticationFailure(error: unknown): boolean {
   return error.response?.status === 401 && !request?._refreshTransientFailure;
 }
 
-function clearAccessSession(): void {
-  localStorage.removeItem('access_token');
-  if (window.location.pathname !== '/login') {
-    window.location.href = '/login';
-  }
-}
-
 export function extractData<T>(response: { data: APIResponse<T> }): T {
   if (!response.data.success) {
     throw new Error(response.data.error || 'An error occurred');
@@ -106,16 +128,38 @@ export function extractData<T>(response: { data: APIResponse<T> }): T {
   return response.data.data as T;
 }
 
+function toSessionState(response: AuthResponse): SessionState {
+  return {
+    accessToken: response.access_token,
+    user: response.user,
+  };
+}
+
 export const authAPI = {
   register: (name: string, email: string, password: string) =>
-    authClient.post<APIResponse<AuthResponse>>('/auth/register', { name, email, password })
-      .then(extractData),
+    authClient
+      .post<APIResponse<AuthResponse>>('/auth/register', { name, email, password })
+      .then(extractData)
+      .then((response) => {
+        setAccessSession(response);
+        return response;
+      }),
 
   login: (email: string, password: string) =>
-    authClient.post<APIResponse<AuthResponse>>('/auth/login', { email, password })
-      .then(extractData),
+    authClient
+      .post<APIResponse<AuthResponse>>('/auth/login', { email, password })
+      .then(extractData)
+      .then((response) => {
+        setAccessSession(response);
+        return response;
+      }),
 
-  logout: () => authClient.post('/auth/logout'),
+  logout: () =>
+    authClient.post('/auth/logout').finally(() => {
+      clearAccessSession();
+    }),
+
+  restoreSession,
 
   getProfile: () =>
     api.get<APIResponse<User>>('/users/me').then(extractData),

@@ -1,18 +1,27 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import axios from 'axios';
-import { api, authAPI, authClient, isAuthenticationFailure } from './client.ts';
+import {
+  api,
+  authAPI,
+  authClient,
+  clearAccessSession,
+  isAuthenticationFailure,
+  restoreSession,
+  sessionCoordinator,
+  setAccessSession,
+} from './client.ts';
 
 function installBrowserGlobals() {
-  const values = new Map();
   globalThis.localStorage = {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-    clear: () => values.clear(),
-    key: (index) => [...values.keys()][index] ?? null,
-    get length() {
-      return values.size;
+    getItem() {
+      throw new Error('access tokens must not be read from localStorage');
+    },
+    setItem() {
+      throw new Error('access tokens must not be written to localStorage');
+    },
+    removeItem() {
+      throw new Error('access tokens must not be removed from localStorage');
     },
   };
   globalThis.window = {
@@ -21,7 +30,20 @@ function installBrowserGlobals() {
       href: '',
     },
   };
-  return values;
+}
+
+function session(accessToken = 'old-access') {
+  return {
+    access_token: accessToken,
+    user: {
+      id: 'user-1',
+      name: 'Owner',
+      email: 'owner@example.com',
+      role: 'user',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    },
+  };
 }
 
 function success(config, data, status = 200) {
@@ -44,9 +66,15 @@ function httpError(config, status, message) {
   });
 }
 
-test('a protected 401 refreshes once and retries with the new access token', async () => {
-  const storage = installBrowserGlobals();
-  storage.set('access_token', 'old-access');
+beforeEach(() => {
+  installBrowserGlobals();
+  clearAccessSession(false);
+  api.defaults.adapter = undefined;
+  authClient.defaults.adapter = undefined;
+});
+
+test('a protected 401 refreshes once and retries with the new in-memory access token', async () => {
+  setAccessSession(session());
 
   let protectedCalls = 0;
   let refreshCalls = 0;
@@ -62,10 +90,7 @@ test('a protected 401 refreshes once and retries with the new access token', asy
     refreshCalls += 1;
     return success(config, {
       success: true,
-      data: {
-        access_token: 'new-access',
-        user: { id: 'user-1', name: 'Owner', email: 'owner@example.com' },
-      },
+      data: session('new-access'),
     });
   };
 
@@ -73,12 +98,64 @@ test('a protected 401 refreshes once and retries with the new access token', asy
   assert.equal(protectedCalls, 2);
   assert.equal(refreshCalls, 1);
   assert.equal(response.data.data.id, 'user-1');
-  assert.equal(storage.get('access_token'), 'new-access');
+  assert.equal(sessionCoordinator.getAccessToken(), 'new-access');
 });
 
-test('a transient refresh failure preserves the existing access token', async () => {
-  const storage = installBrowserGlobals();
-  storage.set('access_token', 'old-access');
+test('initial load and reload restore the session through the HttpOnly cookie', async () => {
+  let refreshCalls = 0;
+  authClient.defaults.adapter = async (config) => {
+    refreshCalls += 1;
+    assert.match(config.url, /\/auth\/refresh$/);
+    return success(config, {
+      success: true,
+      data: session(`restored-access-${refreshCalls}`),
+    });
+  };
+
+  const restored = await restoreSession();
+  assert.equal(restored?.accessToken, 'restored-access-1');
+  assert.equal(sessionCoordinator.getAccessToken(), 'restored-access-1');
+
+  clearAccessSession(false);
+  const restoredAfterReload = await restoreSession();
+  assert.equal(restoredAfterReload?.accessToken, 'restored-access-2');
+  assert.equal(refreshCalls, 2);
+});
+
+test('concurrent protected requests share one refresh operation', async () => {
+  setAccessSession(session());
+
+  let protectedCalls = 0;
+  let refreshCalls = 0;
+  api.defaults.adapter = async (config) => {
+    protectedCalls += 1;
+    if (protectedCalls <= 2) {
+      throw httpError(config, 401, 'expired access token');
+    }
+    assert.equal(config.headers.Authorization, 'Bearer shared-access');
+    return success(config, { success: true, data: { id: 'user-1' } });
+  };
+  authClient.defaults.adapter = async (config) => {
+    refreshCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return success(config, {
+      success: true,
+      data: session('shared-access'),
+    });
+  };
+
+  const responses = await Promise.all([
+    api.get('/users/me'),
+    api.get('/tasks'),
+  ]);
+  assert.equal(protectedCalls, 4);
+  assert.equal(refreshCalls, 1);
+  assert.equal(responses[0].data.data.id, 'user-1');
+  assert.equal(responses[1].data.data.id, 'user-1');
+});
+
+test('a transient refresh failure preserves the existing in-memory access token', async () => {
+  setAccessSession(session());
 
   let protectedCalls = 0;
   api.defaults.adapter = async (config) => {
@@ -91,12 +168,11 @@ test('a transient refresh failure preserves the existing access token', async ()
 
   await assert.rejects(api.get('/users/me'));
   assert.equal(protectedCalls, 1);
-  assert.equal(storage.get('access_token'), 'old-access');
+  assert.equal(sessionCoordinator.getAccessToken(), 'old-access');
 });
 
-test('a refresh 401 clears the local access session', async () => {
-  const storage = installBrowserGlobals();
-  storage.set('access_token', 'old-access');
+test('a refresh 401 clears the in-memory access session', async () => {
+  setAccessSession(session());
 
   api.defaults.adapter = async (config) => {
     throw httpError(config, 401, 'expired access token');
@@ -106,13 +182,51 @@ test('a refresh 401 clears the local access session', async () => {
   };
 
   await assert.rejects(api.get('/users/me'));
-  assert.equal(storage.get('access_token'), undefined);
+  assert.equal(sessionCoordinator.getAccessToken(), null);
+  assert.equal(globalThis.window.location.href, '/login');
+});
+
+test('a retried request is not refreshed more than once', async () => {
+  setAccessSession(session());
+
+  let protectedCalls = 0;
+  let refreshCalls = 0;
+  api.defaults.adapter = async (config) => {
+    protectedCalls += 1;
+    throw httpError(config, 401, 'invalid access token');
+  };
+  authClient.defaults.adapter = async (config) => {
+    refreshCalls += 1;
+    return success(config, {
+      success: true,
+      data: session('rotated-access'),
+    });
+  };
+
+  await assert.rejects(api.get('/users/me'));
+  assert.equal(protectedCalls, 2);
+  assert.equal(refreshCalls, 1);
+  assert.equal(sessionCoordinator.getAccessToken(), null);
+});
+
+test('logout revokes the cookie session and clears local memory', async () => {
+  setAccessSession(session());
+
+  let logoutCalls = 0;
+  authClient.defaults.adapter = async (config) => {
+    logoutCalls += 1;
+    assert.match(config.url, /\/auth\/logout$/);
+    return success(config, undefined, 204);
+  };
+
+  await authAPI.logout();
+  assert.equal(logoutCalls, 1);
+  assert.equal(sessionCoordinator.getAccessToken(), null);
   assert.equal(globalThis.window.location.href, '/login');
 });
 
 test('a failed login does not attempt refresh or clear an existing session', async () => {
-  const storage = installBrowserGlobals();
-  storage.set('access_token', 'existing-access');
+  setAccessSession(session('existing-access'));
 
   let authCalls = 0;
   authClient.defaults.adapter = async (config) => {
@@ -123,7 +237,7 @@ test('a failed login does not attempt refresh or clear an existing session', asy
 
   await assert.rejects(authAPI.login('owner@example.com', 'wrong-password'));
   assert.equal(authCalls, 1);
-  assert.equal(storage.get('access_token'), 'existing-access');
+  assert.equal(sessionCoordinator.getAccessToken(), 'existing-access');
 });
 
 test('authentication failure classification ignores a transient refresh failure', () => {
