@@ -9,11 +9,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/mohamed/go-clean-architecture/internal/delivery/handler/middleware"
-	"github.com/mohamed/go-clean-architecture/internal/infra/auth"
+	"github.com/mohamedsalahi/GO_DB/internal/delivery/handler/middleware"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mohamed/go-clean-architecture/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
 )
 
 type Dependencies struct {

@@ -10,14 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mohamed/go-clean-architecture/config"
-	"github.com/mohamed/go-clean-architecture/internal/domain"
-	"github.com/mohamed/go-clean-architecture/internal/delivery/handler"
-	"github.com/mohamed/go-clean-architecture/internal/infra/auth"
-	"github.com/mohamed/go-clean-architecture/internal/infra/db"
-	"github.com/mohamed/go-clean-architecture/internal/infra/logger"
-	"github.com/mohamed/go-clean-architecture/internal/repository"
-	"github.com/mohamed/go-clean-architecture/internal/usecase"
+	"github.com/mohamedsalahi/GO_DB/config"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/delivery/handler"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/auth"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/db"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/logger"
+	"github.com/mohamedsalahi/GO_DB/internal/repository"
+	"github.com/mohamedsalahi/GO_DB/internal/usecase"
 	"golang.org/x/crypto/bcrypt"
 )
 

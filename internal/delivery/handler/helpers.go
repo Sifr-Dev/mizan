@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/mohamed/go-clean-architecture/internal/delivery/handler/middleware"
+	"github.com/mohamedsalahi/GO_DB/internal/delivery/handler/middleware"
 )
 
 func decodeJSON(r *http.Request, v interface{}) error {

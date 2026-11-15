@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/mohamed/go-clean-architecture/internal/domain"
-	"github.com/mohamed/go-clean-architecture/internal/infra/auth"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 

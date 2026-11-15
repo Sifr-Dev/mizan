@@ -1,4 +1,4 @@
-module github.com/mohamed/go-clean-architecture
+module github.com/mohamedsalahi/GO_DB
 
 go 1.26.3
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mohamed/go-clean-architecture/internal/domain"
-	"github.com/mohamed/go-clean-architecture/internal/repository/dbgen"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/repository/dbgen"
 )
 
 type userRepo struct {

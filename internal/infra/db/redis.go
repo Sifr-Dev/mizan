@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/mohamed/go-clean-architecture/config"
+	"github.com/mohamedsalahi/GO_DB/config"
 	"github.com/redis/go-redis/v9"
 )
 
