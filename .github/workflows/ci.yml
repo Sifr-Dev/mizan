@@ -35,6 +35,67 @@ jobs:
       - name: Build Go binaries
         run: go build ./cmd/...
 
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: go_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d go_db_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/go_db_test?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+      MIGRATE_VERSION: v4.20.1
+      SQLC_VERSION: v1.31.1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install pinned migration tool
+        run: |
+          go install github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Apply PostgreSQL migrations
+        run: migrate -path migrations -database "$DATABASE_URL" up
+
+      - name: Validate sqlc generation
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@${SQLC_VERSION}
+          sqlc generate
+          git diff --exit-code -- internal/repository/dbgen
+
+      - name: Run PostgreSQL and Redis integration tests
+        env:
+          GO_DB_INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+          GO_DB_INTEGRATION_REDIS_URL: ${{ env.REDIS_URL }}
+        run: go test -race -count=1 ./internal/integration
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
