@@ -31,11 +31,13 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-// AuthResponse is the DTO returned after successful auth.
+// AuthResponse is returned after successful authentication. The cookie
+// transport is introduced in the following HTTP-boundary commit.
 type AuthResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	User         User   `json:"user"`
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"refresh_token"`
+	RefreshExpiresAt time.Time `json:"-"`
+	User             User      `json:"user"`
 }
 
 // NormalizeEmail gives the application one canonical representation for email
@@ -61,6 +63,8 @@ type (
 	UserService interface {
 		Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error)
 		Login(ctx context.Context, req LoginRequest) (*AuthResponse, error)
+		Refresh(ctx context.Context, refreshToken string) (*AuthResponse, error)
+		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID uuid.UUID) (*User, error)
 	}
 

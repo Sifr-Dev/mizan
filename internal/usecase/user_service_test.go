@@ -15,7 +15,7 @@ import (
 
 func setupUserService() (*MockUserRepo, *auth.TokenManager, domain.UserService) {
 	mockRepo := new(MockUserRepo)
-	tokenMgr := auth.NewTokenManager("test-secret-key", 15*time.Minute, 7*24*time.Hour)
+	tokenMgr := auth.NewTokenManager("test-secret-key", 15*time.Minute, 7*24*time.Hour, auth.NewMemorySessionStore())
 	svc := NewUserService(mockRepo, tokenMgr)
 	return mockRepo, tokenMgr, svc
 }

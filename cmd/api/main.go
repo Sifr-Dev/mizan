@@ -57,6 +57,9 @@ func main() {
 		cfg.JWT.Secret,
 		cfg.JWT.AccessExpiration,
 		cfg.JWT.RefreshExpiration,
+		auth.NewRedisSessionStore(rdb),
+		auth.WithIssuer(cfg.JWT.Issuer),
+		auth.WithAudience(cfg.JWT.Audience),
 	)
 
 	userRepo := repository.NewUserRepo(dbPool)

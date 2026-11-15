@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -17,21 +19,24 @@ const UserRoleKey contextKey = "user_role"
 func AuthMiddleware(tokenManager *auth.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+			authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+			parts := strings.Fields(authHeader)
+			if len(parts) == 0 {
+				writeMiddlewareError(w, http.StatusUnauthorized, "missing authorization header")
+				return
+			}
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") || parts[1] == "" {
+				writeMiddlewareError(w, http.StatusUnauthorized, "invalid authorization header format")
 				return
 			}
 
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
-				return
-			}
-
-			claims, err := tokenManager.ValidateToken(parts[1])
+			claims, err := tokenManager.ValidateAccessToken(r.Context(), parts[1])
 			if err != nil {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				if errors.Is(err, auth.ErrSessionUnavailable) {
+					writeMiddlewareError(w, http.StatusServiceUnavailable, "authentication service unavailable")
+					return
+				}
+				writeMiddlewareError(w, http.StatusUnauthorized, "invalid or expired token")
 				return
 			}
 
@@ -56,13 +61,24 @@ func GetUserRole(ctx context.Context) string {
 	return ""
 }
 
+// AdminMiddleware retains the legacy route signature during the token
+// lifecycle migration. The authorization-boundary commit replaces it with a
+// required current-role database resolver.
 func AdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role := GetUserRole(r.Context())
-		if role != "admin" {
-			http.Error(w, `{"error":"forbidden: admin access required"}`, http.StatusForbidden)
+		if GetUserRole(r.Context()) != "admin" {
+			writeMiddlewareError(w, http.StatusForbidden, "forbidden: admin access required")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(r.Context()))
+	})
+}
+
+func writeMiddlewareError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"error":   message,
 	})
 }
