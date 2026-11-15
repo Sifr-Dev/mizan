@@ -73,7 +73,7 @@ cd GO_DB
 cp .env.example .env
 ```
 
-Edit `.env` before starting the API. At minimum, replace `JWT_SECRET` with a random value of at least 32 bytes. The example CORS origins are for the local Vite server; use an explicit HTTPS origin list for a deployed frontend. Explicitly injected environment variables take precedence over `.env`, and a process whose injected `APP_ENV` is `production` does not load `.env` at all.
+Edit `.env` before starting the API. Set `JWT_SECRET` to a unique random value of at least 32 bytes, for example `openssl rand -hex 32`; the example file intentionally leaves it empty so the known placeholder cannot be used accidentally. The example CORS origins are for the local Vite server; use an explicit HTTPS origin list for a deployed frontend. Explicitly injected environment variables take precedence over `.env`, and a process whose injected `APP_ENV` is `production` does not load `.env` at all.
 
 Start PostgreSQL and Redis:
 
@@ -120,7 +120,7 @@ curl -i -X POST http://localhost:8080/api/v1/auth/register \
   -d '{"name":"John Doe","email":"john@example.com","password":"secret123"}'
 ```
 
-The response contains `access_token` and `user`. The refresh session is set as an HttpOnly cookie; it is not included in the JSON body.
+The JSON envelope contains `data.access_token` and `data.user`. The refresh session is set as an HttpOnly cookie; it is not included in the JSON body.
 
 ### Log in and call a protected endpoint
 

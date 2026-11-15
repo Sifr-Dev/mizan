@@ -33,6 +33,10 @@ func TestConfigRejectsWeakOrUnsafeValues(t *testing.T) {
 	assert.Error(t, config.Validate())
 
 	config = validConfig()
+	config.JWT.Secret = exampleJWTSecret
+	assert.Error(t, config.Validate())
+
+	config = validConfig()
 	config.CORS.AllowedOrigins = "*"
 	assert.Error(t, config.Validate())
 

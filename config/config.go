@@ -107,6 +107,7 @@ const (
 	maximumBcryptPasswordBytes = 72
 	maximumAdminNameRunes      = 100
 	maximumEmailLength         = 255
+	exampleJWTSecret           = "replace-with-a-random-secret-of-at-least-32-bytes"
 )
 
 // LoadConfig loads config from environment variables and/or optional .env file.
@@ -175,6 +176,9 @@ func (c *Config) Validate() error {
 	}
 	if len(c.JWT.Secret) < minimumJWTSecretBytes {
 		return fmt.Errorf("JWT_SECRET must be at least %d bytes", minimumJWTSecretBytes)
+	}
+	if c.JWT.Secret == exampleJWTSecret {
+		return fmt.Errorf("JWT_SECRET must not use the example placeholder")
 	}
 	if strings.TrimSpace(c.JWT.Issuer) == "" || strings.TrimSpace(c.JWT.Audience) == "" {
 		return fmt.Errorf("JWT_ISSUER and JWT_AUDIENCE are required")
