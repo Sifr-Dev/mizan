@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -37,7 +38,7 @@ func (h *adminHandler) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 type listUserTasksResponse struct {
-	UserID uuid.UUID    `json:"user_id"`
+	UserID uuid.UUID     `json:"user_id"`
 	Tasks  []domain.Task `json:"tasks"`
 }
 
@@ -71,6 +72,10 @@ func (h *adminHandler) PromoteUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.adminSvc.PromoteToAdmin(r.Context(), userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "user not found")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "failed to promote user")
 		return
 	}

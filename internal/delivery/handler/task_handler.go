@@ -9,15 +9,31 @@ import (
 )
 
 type TaskHandler struct {
-	taskService domain.TaskService
-	validate    *validator.Validate
+	taskService  domain.TaskService
+	validate     *validator.Validate
+	maxBodyBytes int64
 }
 
-func NewTaskHandler(taskService domain.TaskService) *TaskHandler {
-	return &TaskHandler{
-		taskService: taskService,
-		validate:    validator.New(),
+type TaskHandlerOption func(*TaskHandler)
+
+func WithTaskBodyLimit(maxBodyBytes int64) TaskHandlerOption {
+	return func(handler *TaskHandler) {
+		if maxBodyBytes > 0 {
+			handler.maxBodyBytes = maxBodyBytes
+		}
 	}
+}
+
+func NewTaskHandler(taskService domain.TaskService, options ...TaskHandlerOption) *TaskHandler {
+	handler := &TaskHandler{
+		taskService:  taskService,
+		validate:     validator.New(),
+		maxBodyBytes: defaultMaxBodyBytes,
+	}
+	for _, option := range options {
+		option(handler)
+	}
+	return handler
 }
 
 func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -28,13 +44,13 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.CreateTaskRequest
-	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(w, r, &req, h.maxBodyBytes); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
+		respondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -107,13 +123,13 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req domain.UpdateTaskRequest
-	if err := decodeJSON(r, &req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(w, r, &req, h.maxBodyBytes); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
+		respondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
