@@ -1,16 +1,16 @@
 # Frontend build stage
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
 
 COPY frontend/ .
-RUN npx vite build
+RUN npm run build
 
 # Go build stage
-FROM golang:1.23-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -21,25 +21,27 @@ RUN go mod download
 
 COPY . .
 
-# Copy the built frontend into the Go build context
+# Copy the built frontend into the Go build context.
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s -X main.version=$(git describe --tags --always 2>/dev/null || echo 'dev')" \
+    -ldflags="-w -s" \
     -o /app/api ./cmd/api
 
 # Runtime stage
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && addgroup -S app \
+    && adduser -S -G app app
 
 WORKDIR /app
 
 COPY --from=go-builder /app/api .
-COPY --from=go-builder /app/.env.example .env
 COPY --from=go-builder /app/migrations ./migrations
 COPY --from=go-builder /app/frontend/dist ./frontend/dist
 
+USER app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
