@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/banner-dark.svg">
+    <img alt="GO_DB — built from zero" src=".github/banner-light.svg" width="100%">
+  </picture>
+</p>
+
 # Go Clean Architecture API
 
 A layered Go REST API and React/TypeScript client for registration, authentication, task ownership, and explicit administrator management.
