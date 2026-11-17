@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,24 +18,34 @@ type User struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// RegisterRequest is the DTO for user registration
+// RegisterRequest is the DTO for user registration.
 type RegisterRequest struct {
 	Name     string `json:"name" validate:"required,min=2,max=100"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8,max=72"`
 }
 
-// LoginRequest is the DTO for user login
+// LoginRequest is the DTO for user login.
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
 }
 
-// AuthResponse is the DTO returned after successful auth
+// AuthResponse is returned after successful authentication. The refresh token is
+// deliberately not serialized into the JSON response; the HTTP layer places it
+// in an HttpOnly cookie instead.
 type AuthResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	User         User   `json:"user"`
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"-"`
+	RefreshExpiresAt time.Time `json:"-"`
+	User             User      `json:"user"`
+}
+
+// NormalizeEmail gives the application one canonical representation for email
+// addresses. The database uniqueness rule is backed by a case-insensitive
+// index, so lookups and inserts use the same key.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 const RoleAdmin = "admin"
@@ -53,6 +64,8 @@ type (
 	UserService interface {
 		Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error)
 		Login(ctx context.Context, req LoginRequest) (*AuthResponse, error)
+		Refresh(ctx context.Context, refreshToken string) (*AuthResponse, error)
+		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID uuid.UUID) (*User, error)
 	}
 

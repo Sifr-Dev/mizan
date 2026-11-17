@@ -11,4 +11,5 @@ var (
 	ErrEmailAlreadyInUse = errors.New("email already in use")
 	ErrInvalidCreds      = errors.New("invalid credentials")
 	ErrTaskNotBelong     = errors.New("task does not belong to user")
+	ErrUnavailable       = errors.New("service unavailable")
 )

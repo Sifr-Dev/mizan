@@ -2,41 +2,45 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/mohamed/go-clean-architecture/internal/infra/auth"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/infra/auth"
 )
 
 type contextKey string
 
 const UserIDKey contextKey = "user_id"
-const UserRoleKey contextKey = "user_role"
 
 func AuthMiddleware(tokenManager *auth.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+			authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+			parts := strings.Fields(authHeader)
+			if len(parts) == 0 {
+				writeMiddlewareError(w, http.StatusUnauthorized, "missing authorization header")
+				return
+			}
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") || parts[1] == "" {
+				writeMiddlewareError(w, http.StatusUnauthorized, "invalid authorization header format")
 				return
 			}
 
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
-				return
-			}
-
-			claims, err := tokenManager.ValidateToken(parts[1])
+			claims, err := tokenManager.ValidateAccessToken(r.Context(), parts[1])
 			if err != nil {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				if errors.Is(err, auth.ErrSessionUnavailable) {
+					writeMiddlewareError(w, http.StatusServiceUnavailable, "authentication service unavailable")
+					return
+				}
+				writeMiddlewareError(w, http.StatusUnauthorized, "invalid or expired token")
 				return
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -49,20 +53,51 @@ func GetUserID(ctx context.Context) uuid.UUID {
 	return uuid.Nil
 }
 
-func GetUserRole(ctx context.Context) string {
-	if role, ok := ctx.Value(UserRoleKey).(string); ok {
-		return role
+// AdminMiddleware checks the current database role instead of trusting a role
+// copied into a bearer token. The resolver is required: production
+// authorization must always resolve the account's current role from the
+// database.
+func AdminMiddleware(resolver domain.UserService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := GetUserID(r.Context())
+			if userID == uuid.Nil {
+				writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			if resolver == nil {
+				writeMiddlewareError(w, http.StatusServiceUnavailable, "authorization service unavailable")
+				return
+			}
+
+			user, err := resolver.GetProfile(r.Context(), userID)
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+					return
+				}
+				writeMiddlewareError(w, http.StatusServiceUnavailable, "authorization service unavailable")
+				return
+			}
+			if user == nil {
+				writeMiddlewareError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if user.Role != domain.RoleAdmin {
+				writeMiddlewareError(w, http.StatusForbidden, "forbidden: admin access required")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(r.Context()))
+		})
 	}
-	return ""
 }
 
-func AdminMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role := GetUserRole(r.Context())
-		if role != "admin" {
-			http.Error(w, `{"error":"forbidden: admin access required"}`, http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(r.Context()))
+func writeMiddlewareError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"error":   message,
 	})
 }

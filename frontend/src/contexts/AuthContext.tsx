@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
-import { authAPI } from '../api/client';
+import { authAPI, isAuthenticationFailure, restoreSession } from '../api/client';
 import type { User, AuthResponse } from '../types';
 
 interface AuthState {
@@ -7,7 +7,7 @@ interface AuthState {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<AuthResponse>;
   register: (name: string, email: string, password: string) => Promise<AuthResponse>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loadUser: () => Promise<void>;
 }
 
@@ -18,39 +18,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await authAPI.login(email, password);
-    localStorage.setItem('access_token', res.access_token);
-    localStorage.setItem('refresh_token', res.refresh_token);
-    setUser(res.user);
-    return res;
+    const response = await authAPI.login(email, password);
+    setUser(response.user);
+    return response;
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    const res = await authAPI.register(name, email, password);
-    localStorage.setItem('access_token', res.access_token);
-    localStorage.setItem('refresh_token', res.refresh_token);
-    setUser(res.user);
-    return res;
+    const response = await authAPI.register(name, email, password);
+    setUser(response.user);
+    return response;
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      await authAPI.logout();
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   const loadUser = useCallback(async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
     try {
-      const user = await authAPI.getProfile();
-      setUser(user);
-    } catch {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+      const restored = await restoreSession();
+      if (!restored) {
+        setUser(null);
+        return;
+      }
+
+      const profile = await authAPI.getProfile();
+      setUser(profile);
+    } catch (error) {
+      if (isAuthenticationFailure(error)) {
+        setUser(null);
+      }
     } finally {
       setIsLoading(false);
     }

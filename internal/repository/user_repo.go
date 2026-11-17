@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mohamed/go-clean-architecture/internal/domain"
-	"github.com/mohamed/go-clean-architecture/internal/repository/dbgen"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/repository/dbgen"
 )
 
 type userRepo struct {
@@ -28,6 +30,10 @@ func (r *userRepo) Create(ctx context.Context, user *domain.User) error {
 
 	dbUser, err := r.q.CreateUser(ctx, params)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && (pgErr.ConstraintName == "users_email_key" || pgErr.ConstraintName == "idx_users_email_canonical") {
+			return fmt.Errorf("%w: create user", domain.ErrEmailAlreadyInUse)
+		}
 		return fmt.Errorf("create user: %w", err)
 	}
 

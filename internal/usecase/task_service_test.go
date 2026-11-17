@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mohamed/go-clean-architecture/internal/domain"
+	"github.com/mohamedsalahi/GO_DB/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

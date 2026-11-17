@@ -1,0 +1,212 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './frontend/*'))"
+
+      - name: Vet Go packages
+        run: go vet ./...
+
+      - name: Test Go packages
+        run: go test -race -count=1 ./...
+
+      - name: Build Go binaries
+        run: go build ./cmd/...
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:81e77a4833487b8132fe4b00bedd39dc3f74b8641e387f19312a48f7de218c2e
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: go_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d go_db_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/go_db_test?sslmode=disable
+      REDIS_URL: redis://localhost:6379/0
+      MIGRATE_VERSION: v4.20.1
+      SQLC_VERSION: v1.31.1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install pinned migration tool
+        run: |
+          go install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Apply PostgreSQL migrations
+        run: migrate -path migrations -database "$DATABASE_URL" up
+
+      - name: Validate sqlc generation
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@${SQLC_VERSION}
+          sqlc generate
+          git diff --exit-code -- internal/repository/dbgen
+
+      - name: Run PostgreSQL and Redis integration tests
+        env:
+          GO_DB_INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+          GO_DB_INTEGRATION_REDIS_URL: ${{ env.REDIS_URL }}
+        run: go test -race -count=1 ./internal/integration
+
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Prepare CI-only runtime configuration
+        run: |
+          cat > .env <<'EOF'
+          APP_NAME=go-clean-api
+          APP_VERSION=ci
+          APP_ENV=local
+          LOG_LEVEL=info
+          HTTP_PORT=8080
+          HTTP_READ_TIMEOUT=10s
+          HTTP_WRITE_TIMEOUT=15s
+          HTTP_SHUTDOWN_TIMEOUT=10s
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/clean_db?sslmode=disable
+          REDIS_URL=redis://localhost:6379/0
+          JWT_SECRET=ci-only-runtime-secret-with-more-than-32-bytes
+          JWT_ACCESS_EXPIRATION=5m
+          JWT_REFRESH_EXPIRATION=1h
+          CORS_ALLOWED_ORIGINS=
+          RATE_LIMIT_MAX_REQUESTS=100
+          RATE_LIMIT_WINDOW=1m
+          RATE_LIMIT_FAIL_OPEN=false
+          TRUSTED_PROXY_CIDRS=
+          REQUEST_MAX_BODY_BYTES=1048576
+          AUTH_COOKIE_NAME=refresh_token
+          AUTH_COOKIE_PATH=/api/v1/auth
+          AUTH_COOKIE_SECURE=false
+          AUTH_COOKIE_SAME_SITE=strict
+          EOF
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build API container image
+        run: docker compose build api
+
+      - name: Start PostgreSQL, Redis, migrations, and API
+        run: docker compose up -d postgres redis migrate api
+
+      - name: Wait for API health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Status}}' clean-api 2>/dev/null || true)" = "exited" ]; then
+              break
+            fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+
+      - name: Verify migrated registration and protected profile
+        run: |
+          registration=$(curl -fsS -c /tmp/go-db-cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"Container User","email":"container@example.com","password":"correct horse battery staple"}' \
+            http://127.0.0.1:8080/api/v1/auth/register)
+          token=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["data"]["access_token"])' "$registration")
+          test -n "$token"
+          if printf '%s' "$registration" | grep -q 'refresh_token'; then
+            echo 'refresh token leaked into the JSON response' >&2
+            exit 1
+          fi
+          grep -q '#HttpOnly_' /tmp/go-db-cookies.txt
+          profile=$(curl -fsS -b /tmp/go-db-cookies.txt \
+            -H "Authorization: Bearer $token" \
+            http://127.0.0.1:8080/api/v1/users/me)
+          python3 -c 'import json,sys; payload=json.loads(sys.argv[1]); assert payload["data"]["email"] == "container@example.com"' "$profile"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop container stack
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      - name: Test frontend authentication client
+        run: npm test
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: frontend
