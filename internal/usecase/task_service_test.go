@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/Sifr-dev/GO_DB/internal/domain"
+	"github.com/Sifr-Dev/GO_DB/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

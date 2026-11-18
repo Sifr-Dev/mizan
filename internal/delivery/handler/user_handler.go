@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/Sifr-dev/GO_DB/internal/domain"
+	"github.com/Sifr-Dev/GO_DB/internal/domain"
 )
 
 type CookieConfig struct {
