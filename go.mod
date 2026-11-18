@@ -1,4 +1,4 @@
-module github.com/mohamedsalahi/GO_DB
+module github.com/sifr-salahy/GO_DB
 
 go 1.26.3
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/mohamedsalahi/GO_DB/internal/delivery/handler/middleware"
+	"github.com/sifr-salahy/GO_DB/internal/delivery/handler/middleware"
 )
 
 const defaultMaxBodyBytes int64 = 1 << 20
