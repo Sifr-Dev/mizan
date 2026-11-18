@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mohamedsalahi/GO_DB/internal/domain"
+	"github.com/sifr-salahy/GO_DB/internal/domain"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mohamedsalahi/GO_DB/internal/domain"
-	"github.com/mohamedsalahi/GO_DB/internal/repository/dbgen"
+	"github.com/sifr-salahy/GO_DB/internal/domain"
+	"github.com/sifr-salahy/GO_DB/internal/repository/dbgen"
 )
 
 type taskRepo struct {
