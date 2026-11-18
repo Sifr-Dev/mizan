@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/sifr-salahy/GO_DB/internal/domain"
+	"github.com/Sifr-dev/GO_DB/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

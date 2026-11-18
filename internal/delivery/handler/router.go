@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/sifr-salahy/GO_DB/internal/delivery/handler/middleware"
-	"github.com/sifr-salahy/GO_DB/internal/domain"
-	"github.com/sifr-salahy/GO_DB/internal/infra/auth"
+	"github.com/Sifr-dev/GO_DB/internal/delivery/handler/middleware"
+	"github.com/Sifr-dev/GO_DB/internal/domain"
+	"github.com/Sifr-dev/GO_DB/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 )
 

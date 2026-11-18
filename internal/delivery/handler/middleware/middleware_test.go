@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sifr-salahy/GO_DB/internal/domain"
-	"github.com/sifr-salahy/GO_DB/internal/infra/auth"
+	"github.com/Sifr-dev/GO_DB/internal/domain"
+	"github.com/Sifr-dev/GO_DB/internal/infra/auth"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

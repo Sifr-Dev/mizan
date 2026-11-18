@@ -75,7 +75,7 @@ The domain package contains the business types and interfaces. It does use `goog
 ## Local setup
 
 ```sh
-git clone https://github.com/sifr-salahy/GO_DB.git
+git clone https://github.com/Sifr-dev/GO_DB.git
 cd GO_DB
 cp .env.example .env
 ```

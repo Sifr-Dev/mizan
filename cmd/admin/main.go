@@ -7,10 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/sifr-salahy/GO_DB/config"
-	"github.com/sifr-salahy/GO_DB/internal/infra/db"
-	"github.com/sifr-salahy/GO_DB/internal/repository"
-	"github.com/sifr-salahy/GO_DB/internal/usecase"
+	"github.com/Sifr-dev/GO_DB/config"
+	"github.com/Sifr-dev/GO_DB/internal/infra/db"
+	"github.com/Sifr-dev/GO_DB/internal/repository"
+	"github.com/Sifr-dev/GO_DB/internal/usecase"
 )
 
 func main() {
