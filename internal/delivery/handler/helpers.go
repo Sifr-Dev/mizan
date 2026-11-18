@@ -7,7 +7,7 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/Sifr-Dev/GO_DB/internal/delivery/handler/middleware"
+	"github.com/Sifr-Dev/mizan/internal/delivery/handler/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

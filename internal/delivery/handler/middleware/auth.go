@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Sifr-Dev/GO_DB/internal/domain"
-	"github.com/Sifr-Dev/GO_DB/internal/infra/auth"
+	"github.com/Sifr-Dev/mizan/internal/domain"
+	"github.com/Sifr-Dev/mizan/internal/infra/auth"
 	"github.com/google/uuid"
 )
 

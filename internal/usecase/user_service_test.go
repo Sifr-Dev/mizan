@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Sifr-Dev/GO_DB/internal/domain"
-	"github.com/Sifr-Dev/GO_DB/internal/infra/auth"
+	"github.com/Sifr-Dev/mizan/internal/domain"
+	"github.com/Sifr-Dev/mizan/internal/infra/auth"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

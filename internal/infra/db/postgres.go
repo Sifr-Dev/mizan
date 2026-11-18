@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Sifr-Dev/GO_DB/config"
+	"github.com/Sifr-Dev/mizan/config"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

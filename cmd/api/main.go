@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Sifr-Dev/GO_DB/config"
-	"github.com/Sifr-Dev/GO_DB/internal/delivery/handler"
-	"github.com/Sifr-Dev/GO_DB/internal/infra/auth"
-	"github.com/Sifr-Dev/GO_DB/internal/infra/db"
-	"github.com/Sifr-Dev/GO_DB/internal/infra/logger"
-	"github.com/Sifr-Dev/GO_DB/internal/repository"
-	"github.com/Sifr-Dev/GO_DB/internal/usecase"
+	"github.com/Sifr-Dev/mizan/config"
+	"github.com/Sifr-Dev/mizan/internal/delivery/handler"
+	"github.com/Sifr-Dev/mizan/internal/infra/auth"
+	"github.com/Sifr-Dev/mizan/internal/infra/db"
+	"github.com/Sifr-Dev/mizan/internal/infra/logger"
+	"github.com/Sifr-Dev/mizan/internal/repository"
+	"github.com/Sifr-Dev/mizan/internal/usecase"
 )
 
 func main() {

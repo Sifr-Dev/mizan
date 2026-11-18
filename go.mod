@@ -1,4 +1,4 @@
-module github.com/Sifr-Dev/GO_DB
+module github.com/Sifr-Dev/mizan
 
 go 1.26.3
 

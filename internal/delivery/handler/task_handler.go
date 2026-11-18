@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Sifr-Dev/GO_DB/internal/domain"
+	"github.com/Sifr-Dev/mizan/internal/domain"
 	"github.com/go-playground/validator/v10"
 )
 
