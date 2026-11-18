@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/Sifr-Dev/GO_DB/internal/domain"
 	"github.com/Sifr-Dev/GO_DB/internal/infra/auth"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 

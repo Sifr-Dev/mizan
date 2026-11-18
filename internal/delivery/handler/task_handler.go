@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/Sifr-Dev/GO_DB/internal/domain"
+	"github.com/go-playground/validator/v10"
 )
 
 type TaskHandler struct {

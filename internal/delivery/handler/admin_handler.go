@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Sifr-Dev/GO_DB/internal/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/Sifr-Dev/GO_DB/internal/domain"
 )
 
 type adminHandler struct {

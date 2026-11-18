@@ -7,9 +7,9 @@ import (
 	"mime"
 	"net/http"
 
+	"github.com/Sifr-Dev/GO_DB/internal/delivery/handler/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/Sifr-Dev/GO_DB/internal/delivery/handler/middleware"
 )
 
 const defaultMaxBodyBytes int64 = 1 << 20

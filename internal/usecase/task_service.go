@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/Sifr-Dev/GO_DB/internal/domain"
+	"github.com/google/uuid"
 )
 
 type taskService struct {
