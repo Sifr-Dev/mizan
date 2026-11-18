@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/sifr-salahy/GO_DB/internal/domain"
+	"github.com/Sifr-Dev/GO_DB/internal/domain"
 )
 
 type adminHandler struct {

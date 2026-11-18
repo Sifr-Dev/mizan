@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/sifr-salahy/GO_DB/config"
+	"github.com/Sifr-Dev/GO_DB/config"
 )
 
 // NewPostgresPool creates a new high-performance connection pool for PostgreSQL
