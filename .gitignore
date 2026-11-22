@@ -5,6 +5,7 @@ tmp/
 /tmp
 frontend/node_modules
 frontend/dist
+/.tmp/
 *.tsbuildinfo
 *.exe
 *.exe~
