@@ -50,7 +50,7 @@ export function Layout() {
             <div className="w-6 h-6 rounded-md bg-accent flex items-center justify-center">
               <span className="text-[10px] font-bold text-white tracking-tight">G</span>
             </div>
-            <span className="text-sm font-semibold text-zinc-100 tracking-tight">GoClean</span>
+            <span className="text-sm font-semibold text-zinc-100 tracking-tight">Aegis</span>
           </div>
           <button
             className="lg:hidden p-1 rounded text-zinc-600 hover:text-zinc-300"

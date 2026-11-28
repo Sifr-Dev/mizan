@@ -1,108 +1,124 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/banner-dark.svg">
-    <img alt="GO_DB — built from zero" src=".github/banner-light.svg" width="100%">
-  </picture>
+<div align="center">
+
+<img src="assets/banner.svg" alt="Aegis — layered authentication API and React client" width="100%">
+
+# Aegis
+
+**A layered Go API for authentication and tasks, with a React client and real session rotation.**
+
+<p>
+  <img alt="Go 1.26.3" src="https://img.shields.io/badge/GO-1.26.3-00ADD8?style=for-the-badge&logo=go&logoColor=white&labelColor=05070a">
+  <img alt="React 18" src="https://img.shields.io/badge/REACT-18-61DAFB?style=for-the-badge&logo=react&logoColor=white&labelColor=05070a">
+  <img alt="Tests: 65 Go + 11 frontend" src="https://img.shields.io/badge/TESTS-65_GO_%2B_11_FRONTEND-39c5cf?style=for-the-badge&labelColor=05070a">
+  <img alt="License MIT" src="https://img.shields.io/badge/LICENSE-MIT-2ea043?style=for-the-badge&labelColor=05070a">
+  <img alt="CI" src="https://github.com/Sifr-Dev/mizan/actions/workflows/ci.yml/badge.svg">
 </p>
 
-# Go Clean Architecture API
+</div>
 
-A layered Go REST API and React/TypeScript client for registration, authentication, task ownership, and explicit administrator management.
+> Aegis (formerly `mizan`) is a complete authentication surface: chi handlers, use
+> cases, sqlc repositories, Redis-backed session families, and a Vite frontend
+> that keeps the refresh token out of JavaScript.
 
-The project uses Go, chi, PostgreSQL with sqlc-generated queries, Redis-backed sessions and rate limiting, JWT access tokens, and a Vite frontend. It is a real implementation with a deliberately small operational surface; the claims below describe the code in this repository rather than a hypothetical production deployment.
+## What it is
 
-## Architecture
+Aegis is a Go REST API plus React/TypeScript client for registration, login,
+task ownership and explicit administrator management. The backend is layered —
+delivery (chi), use cases, domain interfaces, infrastructure (pgx/sqlc, Redis,
+JWT) — and the frontend consumes a documented OpenAPI contract. It is a real
+implementation with a deliberately small operational surface: the claims below
+describe this repository, not a hypothetical deployment.
 
-```
-┌─────────────────────────────────────────────────────┐
-│ Delivery                                             │
-│ chi handlers, middleware, CORS, request validation   │
-├─────────────────────────────────────────────────────┤
-│ Use cases                                            │
-│ user, task, and administrator application services   │
-├─────────────────────────────────────────────────────┤
-│ Domain                                               │
-│ entities, DTOs, repository/service interfaces        │
-├─────────────────────────────────────────────────────┤
-│ Infrastructure / repositories                        │
-│ pgx/sqlc adapters, Redis sessions and rate limiter   │
-└─────────────────────────────────────────────────────┘
-```
+The module, app name and container identifiers keep their original values
+(`github.com/Sifr-Dev/mizan`, `go-clean-api`); the product name is Aegis and the
+repository is still `Sifr-Dev/mizan`. The browser UI and page title now say
+Aegis.
 
-The domain package contains the business types and interfaces. It does use `google/uuid` for identifiers, so the earlier claim that it has zero external imports is not repeated here.
+## Current capabilities
 
-## Implemented security contract
+### Authentication and sessions
 
-- **No implicit administrator:** the API never creates or promotes an account at startup. An administrator is created only by the explicit `cmd/admin` command, and an existing email is rejected rather than promoted. Administrator email and password input is validated before use.
-- **Purpose-bound JWTs:** access and refresh tokens use HS256 only and contain `token_use`, `sid`, `jti`, issuer, audience, subject, issued-at, not-before, and expiry claims. A refresh token is rejected by protected routes.
-- **Session-backed token families:** access and refresh tokens reference one server-side Redis session family. The stored current access/refresh JTIs are checked against each presented token, so a JTI cannot be substituted within a family.
-- **Bounded refresh rotation:** rotation atomically consumes the current refresh JTI, preserves the family's absolute expiry, and issues the current role from the database. Reuse of a consumed refresh token revokes the successor family; logout revokes the family as well.
-- **Browser storage boundary:** the refresh token is not returned in JSON or exposed to JavaScript; it is a host-only, HttpOnly, SameSite cookie. The short-lived access token exists only in JavaScript memory. A page reload restores the session through the refresh cookie, concurrent requests share one refresh operation, and same-origin tabs coordinate rotation with Web Locks and `BroadcastChannel`.
-- **Cookie request origin policy:** refresh and logout validate a browser `Origin` against the exact CORS allowlist or the request Host. `SameSite=None` requires `Secure` and an explicit Origin. Non-browser clients without an Origin remain supported for `SameSite=Strict` or `Lax`.
-- **Current-role authorization:** administrator routes resolve the role from the database on each request rather than trusting a role copied into a bearer token.
-- **Explicit CORS:** cross-origin origins come from `CORS_ALLOWED_ORIGINS`. Wildcards, userinfo, paths, queries, and fragments are rejected; production origins must use HTTPS. The CORS middleware is not installed for an empty allowlist, so no cross-origin browser access is granted.
-- **Bounded requests:** JSON endpoints require `Content-Type: application/json`, reject unknown fields and trailing JSON, and enforce `REQUEST_MAX_BODY_BYTES`.
-- **Canonical email:** application input is trimmed and lowercased. Migration `000004_normalize_user_identity` preflights duplicate canonical addresses, normalizes existing email/role values, constrains roles, and adds a unique canonical-email index.
-- **Rate limiting:** the Redis limiter uses one atomic Lua operation for increment and expiry, returns the actual key TTL in rate-limit headers, keeps authentication traffic in a separate counter namespace, skips CORS preflight, and fails closed by default when Redis is unavailable. It is a fixed-window counter, not a sliding-window algorithm.
-- **Trusted proxy boundary:** forwarding headers are ignored unless the immediate peer belongs to `TRUSTED_PROXY_CIDRS`. A trusted proxy chain is evaluated right-to-left, and `X-Real-IP` is never used as a fallback.
+- **Registration, login, refresh, logout** with canonicalised (trimmed,
+  lowercased) email input and a unique canonical-email index added by migration
+  `000004_normalize_user_identity` (`internal/usecase/`, `migrations/`).
+- **Purpose-bound JWTs** — HS256 only, with `token_use`, `sid`, `jti`, issuer,
+  audience, subject, `iat`, `nbf` and `exp`; a refresh token is rejected by
+  protected routes (`internal/infra/auth/`; `auth_test.go`).
+- **Session-backed token families** — Redis stores the current access/refresh
+  JTIs per family, so a JTI cannot be substituted inside a family
+  (`internal/infra/auth/`, `internal/repository/`).
+- **Bounded refresh rotation** — rotation atomically consumes the current JTI,
+  preserves the family's absolute expiry and issues the current database role;
+  reuse of a consumed token revokes the successor family, and logout revokes the
+  family (`internal/usecase/`; `usecase_test.go`).
+- **Browser storage boundary** — the refresh token is a host-only, HttpOnly,
+  SameSite cookie, never in JSON and never visible to JavaScript; the access
+  token lives only in memory, is restored through the refresh cookie on reload,
+  and concurrent requests share one refresh operation across tabs via Web Locks
+  and `BroadcastChannel` (`frontend/src/api/session.ts`; 10 Node tests).
+- **Cookie origin policy** — refresh/logout validate `Origin` against the exact
+  CORS allowlist or the request Host; `SameSite=None` requires `Secure` and an
+  explicit Origin (`internal/delivery/handler/cookie_origin.go`; handler tests).
+- **Explicit administrator provisioning** — startup never creates or promotes an
+  account; `cmd/admin` creates one only when the normalised email does not exist
+  (`cmd/admin/main.go`).
+- **Current-role authorization** — admin routes resolve the role from the
+  database on each request instead of trusting a token claim
+  (`internal/delivery/handler/middleware/auth.go`).
 
-## Project layout
+### Request handling
 
-```
-├── cmd/api/                         # API composition root and server lifecycle
-├── cmd/admin/                       # explicit, non-promoting administrator provisioning
-├── config/                          # environment configuration and validation
-├── internal/delivery/handler/       # HTTP handlers, router, middleware, responses
-├── internal/domain/                 # entities, DTOs, errors, interfaces
-├── internal/infra/auth/             # strict JWT manager and session stores
-├── internal/infra/db/               # PostgreSQL and Redis setup
-├── internal/repository/             # sqlc-backed repository adapters
-├── internal/usecase/                # application services
-├── migrations/                      # ordered SQL migrations
-├── sqlc/queries/                    # typed SQL query source
-├── frontend/                        # React/TypeScript client
-└── docs/openapi.yaml                # HTTP contract
-```
+- **Explicit CORS** from `CORS_ALLOWED_ORIGINS`: wildcards, userinfo, paths,
+  queries and fragments rejected; HTTPS required in production; middleware is
+  not installed for an empty allowlist (`router.go`, `middleware_test.go`).
+- **Bounded JSON** — `Content-Type: application/json` required, unknown fields
+  and trailing JSON rejected, `REQUEST_MAX_BODY_BYTES` enforced (`handler_test.go`).
+- **Rate limiting** — one atomic Redis Lua increment-and-expiry, real TTL in the
+  rate-limit headers, separate auth namespace, preflight skipped, fail-closed by
+  default (`internal/delivery/handler/middleware/ratelimit.go`).
+- **Trusted proxy boundary** — forwarding headers ignored unless the peer is in
+  `TRUSTED_PROXY_CIDRS`; chains evaluated right-to-left; `X-Real-IP` never used
+  as a fallback (`middleware/clientip.go`; `middleware_test.go`).
+- **Tasks CRUD and admin routes** under `/api/v1`, documented in
+  `docs/openapi.yaml` (`task_handler.go`, `admin_handler.go`).
+- **Health endpoint and graceful shutdown** in `cmd/api/main.go`.
 
-## Prerequisites
+### Verification surface
 
-- Go `1.26.3+`
-- Node.js `22.12+` and npm
-- PostgreSQL 16 and Redis 7 for a local run
-- Docker Compose is optional but convenient for the local services
-- `migrate` v4.20.1 and `sqlc` v1.31.1 are optional local developer tools; they are not bundled in the API image
+- **59 Go unit tests** plus **6 service-backed integration tests** (65 total,
+  `go test ./...`).
+- **10 frontend tests** with the Node test runner (`npm test`).
+- **1 Playwright end-to-end test** of login → protected dashboard → logout
+  (`frontend/e2e/auth.spec.mjs`).
+- **Four CI jobs** — Go format/vet/race/build; PostgreSQL+Redis integration with
+  migrations and sqlc drift detection; container build and runtime smoke test;
+  frontend test, build, dependency audit and browser test.
 
-## Local setup
+## Quick start
 
 ```sh
 git clone https://github.com/Sifr-Dev/mizan.git
-cd GO_DB
+cd mizan
 cp .env.example .env
 ```
 
-Edit `.env` before starting the API. Set `JWT_SECRET` to a unique random value of at least 32 bytes, for example `openssl rand -hex 32`; the example file intentionally leaves it empty so the known placeholder cannot be used accidentally. The example CORS origins are for the local Vite server; use an explicit HTTPS origin list for a deployed frontend. Explicitly injected environment variables take precedence over `.env`, and a process whose injected `APP_ENV` is `production` does not load `.env` at all.
-
-Start the containerized API:
+Set `JWT_SECRET` to a unique value of at least 32 bytes (`openssl rand -hex 32`);
+the example leaves it empty on purpose. Then:
 
 ```sh
-docker compose up -d --build api
+docker compose up -d --build api      # PostgreSQL, Redis, migrations, API
 ```
 
-Compose starts the pinned PostgreSQL and Redis images, runs the migrations in a one-shot service, and starts the API only after the migration exits successfully. The API listens on `http://localhost:8080` and serves the production frontend from the same image. Stop the stack with `docker compose down`; add `-v` only when the local database and Redis data may be deleted.
-
-For a Go/Vite development loop, start the dependencies and apply migrations on the host instead:
+The API listens on `http://localhost:8080` and serves the built frontend. For a
+host development loop:
 
 ```sh
 docker compose up -d postgres redis
 make migrate-up
-make run
+make run          # Vite dev server on :3000 proxies /api to the API
 ```
 
-The Vite development server listens on `http://localhost:3000` and proxies `/api` to the API. Migration `000004_normalize_user_identity` intentionally stops if two existing accounts have the same canonical email or if an unsupported role exists. Resolve those rows explicitly before retrying; the migration does not choose which duplicate account to delete.
-
-### Provision an administrator
-
-The API startup path intentionally does not provision an administrator. After the database and migrations are ready, provide one-time values and run the explicit command:
+Provision the first administrator explicitly:
 
 ```sh
 ADMIN_EMAIL=owner@example.com \
@@ -111,107 +127,115 @@ ADMIN_NAME='Owner' \
 go run ./cmd/admin
 ```
 
-The command creates an administrator only when the normalized email does not already exist. It never promotes an existing user. Keep the password out of shell history and rotate it according to the deployment's secret-management policy.
-
-## API examples
-
-### Register
+Register and call a protected route:
 
 ```sh
 curl -i -X POST http://localhost:8080/api/v1/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"name":"John Doe","email":"john@example.com","password":"secret123"}'
-```
 
-The JSON envelope contains `data.access_token` and `data.user`. The refresh session is set as an HttpOnly cookie; it is not included in the JSON body.
-
-### Log in and call a protected endpoint
-
-```sh
 curl -i -c cookies.txt -X POST http://localhost:8080/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"john@example.com","password":"secret123"}'
-
-TOKEN='<access-token from the JSON response>'
-curl http://localhost:8080/api/v1/users/me \
-  -H "Authorization: Bearer $TOKEN"
 ```
 
-### Rotate and revoke a session
+The access token is in `data.access_token`; the refresh session is the HttpOnly
+cookie. `POST /api/v1/auth/refresh` replaces the cookie without extending the
+family's absolute expiry.
 
-```sh
-curl -i -b cookies.txt -c cookies.txt -X POST \
-  http://localhost:8080/api/v1/auth/refresh
-
-curl -i -b cookies.txt -c cookies.txt -X POST \
-  http://localhost:8080/api/v1/auth/logout
-```
-
-The refresh response replaces the cookie. Rotation does not extend the server-side absolute family expiry. Replaying an already-consumed refresh cookie is treated as reuse and revokes the current successor family.
-
-### Tasks
-
-```sh
-curl -X POST http://localhost:8080/api/v1/tasks \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"title":"Buy groceries","description":"Milk, eggs, bread"}'
-
-curl http://localhost:8080/api/v1/tasks \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Administrator routes are under `/api/v1/admin` and require a current database role of `admin`. The full route and error contract is in [`docs/openapi.yaml`](docs/openapi.yaml).
-
-## Configuration reference
-
-| Variable | Purpose | Default/requirement |
-|---|---|---|
-| `APP_ENV` | Runtime environment (`local`, `dev`, `prod`) | required |
-| `DATABASE_URL` | PostgreSQL connection string | required |
-| `REDIS_URL` | Redis connection string | required |
-| `JWT_SECRET` | HS256 signing secret | required; at least 32 bytes |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | Token issuer and audience | `go-clean-api` / `go-clean-api-client` |
-| `JWT_ACCESS_EXPIRATION` | Access-token lifetime | required |
-| `JWT_REFRESH_EXPIRATION` | Absolute refresh-family lifetime | required; longer than access lifetime |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated exact origins | empty (same-origin only); HTTPS required in production |
-| `TRUSTED_PROXY_CIDRS` | CIDRs allowed to supply forwarding headers | empty |
-| `REQUEST_MAX_BODY_BYTES` | Maximum JSON body size | `1048576` |
-| `RATE_LIMIT_MAX_REQUESTS` | Requests per API window | `100` |
-| `RATE_LIMIT_WINDOW` | API limit window | `1m` |
-| `RATE_LIMIT_FAIL_OPEN` | Whether Redis failures pass through | `false` |
-| `AUTH_COOKIE_SECURE` | Secure flag for the refresh cookie | `false`; required `true` in production and with `SameSite=None` |
-| `AUTH_COOKIE_SAME_SITE` | `strict`, `lax`, or `none` | `strict` |
-
-## Development and verification
+## Verification
 
 ```sh
 make fmt-check
 make vet
-make test
-cd frontend && npm ci --ignore-scripts && npm test && npm run build
+make test                       # go test -race -coverprofile=coverage.out ./...
+go build ./cmd/...
+cd frontend && npm test && npm run build && npm run test:e2e
 ```
 
-The service-backed integration suite is opt-in locally because it needs isolated PostgreSQL and Redis instances. Apply the migrations, then provide both service URLs:
+Service-backed integration suite (needs PostgreSQL and Redis):
 
 ```sh
-GO_DB_INTEGRATION_DATABASE_URL='postgres://postgres:postgres@localhost:5432/go_db_test?sslmode=disable' \
+GO_DB_INTEGRATION_DATABASE_URL='postgres://postgres:...@localhost:5432/mizan_test?sslmode=disable' \
 GO_DB_INTEGRATION_REDIS_URL='redis://localhost:6379/0' \
 go test -race -count=1 ./internal/integration
 ```
 
-The repository CI workflow runs four independent checks: Go formatting/vet/race tests/builds; PostgreSQL and Redis integration tests with migrations and sqlc drift detection; a container build and runtime smoke test; and frontend tests, production build, and dependency audit. The integration job installs `migrate` v4.20.1 with the PostgreSQL driver and `sqlc` v1.31.1. The container job builds the image, validates Compose, applies migrations, waits for `/health`, registers a user, and calls the protected profile endpoint. `make lint` requires the separately installed `golangci-lint` binary and is not equivalent to `go vet`.
+Observed on this machine (2026-11-28; Go 1.27.4, Node 26.13.1, PostgreSQL 16.16,
+Valkey 8, AMD Ryzen 7 7435HS, Linux 7.3.4):
 
-The unit suite covers JWT purpose/claims/JTI binding/rotation/reuse revocation, absolute family expiry, configuration and environment precedence, request framing, CORS, cookie Origin policy, rate-limit scope/outage policy, trusted-proxy traversal, registration error mapping, refreshed database roles, administrator provisioning, and frontend refresh/transient-failure behavior. The service-backed suite verifies real PostgreSQL registration/login/current-role behavior, HTTP cookie rotation and reuse revocation, concurrent refresh serialization, live Redis Lua rotation, session persistence across store instances, rate-limit expiry/outage policy, and credentialed CORS/cookie behavior.
+```text
+go test -race ./...
+  ok  config 71.0% | handler 37.7% | middleware 74.6% | infra/auth 63.3%
+  ok  usecase 64.8%  (total statement coverage 44.2%)
+  59 unit tests passed, 6 integration tests skipped without service URLs
 
-## Container notes
+GO_DB_INTEGRATION_* go test -race ./internal/integration
+  ok  6 integration tests passed against real PostgreSQL 16 and Valkey 8
 
-The multi-stage `Dockerfile` pins its Node, Go, and Alpine images by digest, builds the frontend before compiling a native-architecture API binary, runs as an unprivileged user, and exposes a health check. The Compose file pins PostgreSQL, Redis, the migration image, and the development frontend image; it binds development services to loopback and is not a production deployment manifest. The API and migration services use Compose DNS names (`postgres` and `redis`) rather than `localhost`. Copy `.env.example` to `.env` before using Compose and replace the example database credentials and JWT secret.
+frontend: npm test -> 10 passed, 0 failed
+frontend: npm run build -> 1937 modules, dist/assets index-D-Vye4Vm.js 399.19 kB (128.48 kB gzip)
+frontend: npm run test:e2e -> 1 passed (login, dashboard, logout)
+```
 
-## Known limitations
+The container job and `npm audit` were not run locally (no Docker daemon on this
+host); CI runs both. Statement coverage is 44.2% overall because `cmd/*`,
+`internal/domain`, `internal/infra/db`, `internal/repository` and generated code
+contain no tests; that is reported rather than rounded up.
 
-- Browser session coordination has deterministic unit coverage, but there is no real multi-browser end-to-end test in the repository.
-- Cookie-authenticated refresh/logout use SameSite plus exact Origin validation rather than a separate double-submit CSRF token. A deployment that cannot use those browser controls should add a CSRF token before enabling a broader cross-site policy.
-- Reuse detection revokes the affected session family, but there is no operator dashboard for reviewing reuse events or changing a user's password.
-- The rollback for migration `000004_normalize_user_identity` removes the added index and role constraint but cannot reconstruct pre-normalization email or role values.
-- No repository license has been added; the owner must choose one before redistribution.
+## Architecture
+
+```text
+┌─────────────────────────────────────────────────────┐
+│ Delivery      chi handlers, middleware, CORS, JSON   │
+├─────────────────────────────────────────────────────┤
+│ Use cases     user, task, administrator services     │
+├─────────────────────────────────────────────────────┤
+│ Domain        entities, DTOs, repository interfaces  │
+├─────────────────────────────────────────────────────┤
+│ Infra         pgx/sqlc, Redis sessions, JWT          │
+└─────────────────────────────────────────────────────┘
+```
+
+| Path | Responsibility |
+|---|---|
+| `cmd/api/` | Composition root, server lifecycle |
+| `cmd/admin/` | Explicit, non-promoting administrator provisioning |
+| `config/` | Environment parsing and validation |
+| `internal/delivery/handler/` | Handlers, router, middleware, responses |
+| `internal/usecase/` | Application services |
+| `internal/domain/` | Entities, DTOs, errors, interfaces |
+| `internal/infra/auth/` | JWT manager and session stores |
+| `internal/repository/` | sqlc-backed adapters |
+| `migrations/`, `sqlc/queries/` | Schema and query source |
+| `frontend/` | React/TypeScript client and Playwright test |
+| `docs/openapi.yaml` | HTTP contract |
+
+## Limitations
+
+- Browser session coordination has deterministic unit coverage and one mocked
+  Playwright flow; there is no real multi-browser end-to-end test.
+- Cookie-authenticated refresh/logout rely on SameSite plus exact Origin
+  validation rather than a double-submit CSRF token. A deployment that cannot use
+  those browser controls should add a CSRF token before widening the policy.
+- Reuse detection revokes the affected family, but there is no operator dashboard
+  for reuse events and no password-change flow.
+- The rollback for migration `000004` drops the index and role constraint but
+  cannot reconstruct pre-normalisation email or role values.
+- The rate limiter is a fixed-window counter, not a sliding-window algorithm.
+- No email verification, password reset, MFA, or account deletion.
+- `make lint` needs a separately installed `golangci-lint`; CI uses `go vet`.
+
+## Roadmap (NOT IMPLEMENTED)
+
+- Real multi-browser E2E coverage and a CSRF token mode.
+- Password change, reset and email verification flows.
+- Sliding-window rate limiting and per-route budgets.
+- Admin audit log for reuse and role changes.
+- Refresh-family listing/revocation UI for the account owner.
+- OpenAPI-generated client types instead of hand-written ones.
+- A load benchmark for the auth and task routes.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

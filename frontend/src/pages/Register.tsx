@@ -46,7 +46,7 @@ export function Register() {
             <span className="text-sm font-bold text-white">G</span>
           </div>
           <h1 className="text-lg font-semibold text-zinc-100">Create your account</h1>
-          <p className="text-sm text-zinc-600 mt-1">Get started with GoClean</p>
+          <p className="text-sm text-zinc-600 mt-1">Get started with Aegis</p>
         </div>
 
         <div className="bg-surface-card border border-zinc-800 rounded-xl p-6">

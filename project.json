@@ -1,9 +1,16 @@
 {
-  "name": "mizan",
-  "description": "Go Clean Architecture authentication API",
+  "name": "Aegis",
+  "displayName": "Aegis",
+  "repo": "mizan",
+  "description": "Layered Go authentication and task API with a React client, Redis sessions and JWT rotation",
+  "summary": "Registration, purpose-bound JWT rotation with reuse revocation, HttpOnly refresh cookies, explicit admin provisioning and a typed React frontend.",
   "stack": [
-    "go"
+    "go",
+    "react",
+    "postgresql",
+    "redis"
   ],
   "status": "active",
-  "primary_language": "Go"
+  "primary_language": "Go",
+  "license": "MIT"
 }

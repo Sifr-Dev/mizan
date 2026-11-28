@@ -34,7 +34,7 @@ test('login reaches the protected dashboard and logout returns to sign-in', asyn
   await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByText('GoClean', { exact: true })).toBeVisible();
+  await expect(page.getByText('Aegis', { exact: true })).toBeVisible();
   await expect(page.getByText(user.email, { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Logout', exact: true }).click();

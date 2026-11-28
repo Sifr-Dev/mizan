@@ -40,7 +40,7 @@ export function Login() {
           <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center mx-auto mb-4">
             <span className="text-sm font-bold text-white">G</span>
           </div>
-          <h1 className="text-lg font-semibold text-zinc-100">Sign in to GoClean</h1>
+          <h1 className="text-lg font-semibold text-zinc-100">Sign in to Aegis</h1>
           <p className="text-sm text-zinc-600 mt-1">Enter your credentials to continue</p>
         </div>
 

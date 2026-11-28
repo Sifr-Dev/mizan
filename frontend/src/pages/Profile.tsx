@@ -66,7 +66,7 @@ export function Profile() {
         <div className="flex items-start gap-3">
           <Shield className="w-4 h-4 text-zinc-600 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-zinc-300">GoClean API v1.0.0</p>
+            <p className="text-sm font-medium text-zinc-300">Aegis API v1.0.0</p>
             <p className="text-xs text-zinc-600 mt-0.5">
               Authenticated via JWT. Data stored in PostgreSQL with Redis-backed rate limiting.
             </p>
