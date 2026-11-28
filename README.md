@@ -11,7 +11,7 @@
   <img alt="React 18" src="https://img.shields.io/badge/REACT-18-61DAFB?style=for-the-badge&logo=react&logoColor=white&labelColor=05070a">
   <img alt="Tests: 65 Go + 11 frontend" src="https://img.shields.io/badge/TESTS-65_GO_%2B_11_FRONTEND-39c5cf?style=for-the-badge&labelColor=05070a">
   <img alt="License MIT" src="https://img.shields.io/badge/LICENSE-MIT-2ea043?style=for-the-badge&labelColor=05070a">
-  <img alt="CI" src="https://github.com/Sifr-Dev/mizan/actions/workflows/ci.yml/badge.svg">
+  <img alt="CI" src="https://github.com/Sifr-Dev/Aegis/actions/workflows/ci.yml/badge.svg">
 </p>
 
 </div>
@@ -29,10 +29,10 @@ JWT) — and the frontend consumes a documented OpenAPI contract. It is a real
 implementation with a deliberately small operational surface: the claims below
 describe this repository, not a hypothetical deployment.
 
-The module, app name and container identifiers keep their original values
-(`github.com/Sifr-Dev/mizan`, `go-clean-api`); the product name is Aegis and the
-repository is still `Sifr-Dev/mizan`. The browser UI and page title now say
-Aegis.
+The module path (`github.com/Sifr-Dev/mizan`) and the `go-clean-api` app name are
+unchanged so imports and container identifiers keep working. The product name is
+Aegis, the repository is `Sifr-Dev/Aegis` (the former `mizan` URL redirects),
+and the browser UI and page title say Aegis.
 
 ## Current capabilities
 
@@ -97,7 +97,7 @@ Aegis.
 ## Quick start
 
 ```sh
-git clone https://github.com/Sifr-Dev/mizan.git
+git clone https://github.com/Sifr-Dev/Aegis.git
 cd mizan
 cp .env.example .env
 ```
