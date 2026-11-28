@@ -1,0 +1,9 @@
+{
+  "name": "mizan",
+  "description": "Go Clean Architecture authentication API",
+  "stack": [
+    "go"
+  ],
+  "status": "active",
+  "primary_language": "Go"
+}
